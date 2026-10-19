@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14323a">
+<title>Fugtlog · Fjordtørreriet</title>
+<style>
+  :root {
+    --bg: #f3f5f4;
+    --panel: #ffffff;
+    --ink: #14232a;
+    --muted: #5b6b71;
+    --line: #d4dcdc;
+    --brand: #14323a;
+    --accent: #1f7a6b;
+    --ok-bg: #e5f3ee;
+    --ok-ink: #145a4c;
+    --bad: #c62828;
+    --bad-bg: #fdecec;
+    --radius: 14px;
+    --tap: 64px;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 18px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  header {
+    background: var(--brand);
+    color: #fff;
+    padding: 16px 16px 20px;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+  .top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  header h1 { font-size: 20px; margin: 0; font-weight: 700; letter-spacing: .01em; }
+  header .clock { font-variant-numeric: tabular-nums; opacity: .85; font-size: 16px; }
+  .counter {
+    margin-top: 12px;
+    display: flex; align-items: center; gap: 14px;
+    background: rgba(255,255,255,.1);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+  }
+  .counter .num { font-size: 44px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+  .counter .lbl { font-size: 17px; line-height: 1.2; }
+  .counter.has-dev { background: var(--bad); }
+
+  nav.tabs {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    padding: 12px 16px 0;
+    max-width: 720px; margin: 0 auto;
+  }
+  nav.tabs button {
+    min-height: 56px; border-radius: 12px; border: 2px solid var(--line);
+    background: var(--panel); color: var(--ink); font: inherit; font-weight: 600;
+  }
+  nav.tabs button[aria-selected="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+  main { max-width: 720px; margin: 0 auto; padding: 16px; }
+  section[hidden] { display: none; }
+  .card { background: var(--panel); border-radius: var(--radius); padding: 18px 16px; border: 1px solid var(--line); margin-bottom: 16px; }
+  h2 { font-size: 20px; margin: 0 0 14px; }
+
+  label { display: block; font-weight: 600; margin: 0 0 6px; }
+  .field { margin-bottom: 18px; }
+  .hint { color: var(--muted); font-size: 15px; font-weight: 400; }
+  input, select, textarea {
+    width: 100%; min-height: var(--tap);
+    font: inherit; font-size: 22px; color: var(--ink);
+    padding: 10px 14px;
+    border: 2px solid var(--line); border-radius: 12px; background: #fff;
+  }
+  textarea { min-height: 120px; font-size: 19px; resize: vertical; }
+  input:focus, select:focus, textarea:focus { outline: 3px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .is-bad { border-color: var(--bad) !important; background: var(--bad-bg) !important; color: var(--bad); font-weight: 700; }
+
+  .chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+  .chips button {
+    min-height: var(--tap); font: inherit; font-size: 20px; font-weight: 700;
+    border: 2px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink);
+  }
+  #vareChips { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .chips button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  .status {
+    border-radius: 12px; padding: 14px 16px; margin-bottom: 18px; font-weight: 600; font-size: 18px;
+    background: #eef1f1; color: var(--muted);
+  }
+  .status.ok { background: var(--ok-bg); color: var(--ok-ink); }
+  .status.bad { background: var(--bad); color: #fff; }
+  .status ul { margin: 6px 0 0; padding-left: 22px; font-weight: 500; }
+
+  .corrective { border: 3px solid var(--bad); border-radius: 12px; padding: 14px; margin-bottom: 18px; background: var(--bad-bg); }
+  .corrective label { color: var(--bad); }
+
+  .btn {
+    display: block; width: 100%; min-height: 72px;
+    font: inherit; font-size: 22px; font-weight: 800;
+    border: 0; border-radius: 14px; background: var(--accent); color: #fff;
+  }
+  .btn:disabled { background: #b8c4c3; color: #f4f6f6; }
+  .btn.secondary { background: #fff; color: var(--ink); border: 2px solid var(--ink); }
+  .btn.danger { background: #fff; color: var(--bad); border: 2px solid var(--bad); }
+  .btn + .btn { margin-top: 12px; }
+
+  .toast {
+    position: fixed; left: 16px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom));
+    max-width: 688px; margin: 0 auto;
+    background: var(--ink); color: #fff; padding: 16px 18px; border-radius: 14px;
+    font-weight: 600; font-size: 18px; box-shadow: 0 8px 30px rgba(0,0,0,.25);
+    transform: translateY(160%); transition: transform .25s ease; z-index: 20;
+  }
+  .toast.show { transform: none; }
+
+  .log-item { border: 1px solid var(--line); border-left: 8px solid var(--accent); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; background: #fff; }
+  .log-item.dev { border-left-color: var(--bad); background: var(--bad-bg); }
+  .log-head { display: flex; justify-content: space-between; gap: 10px; font-weight: 700; }
+  .log-meta { color: var(--muted); font-size: 15px; }
+  .log-vals { font-size: 20px; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .log-vals .bad { color: var(--bad); font-weight: 800; }
+  .log-action { margin-top: 8px; font-size: 16px; }
+  .log-action b { color: var(--bad); }
+  .empty { color: var(--muted); text-align: center; padding: 24px 0; }
+
+  .limit-row { border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+  .limit-row .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .limit-row input { font-size: 19px; min-height: 56px; padding: 8px 10px; }
+  .limit-row label { font-size: 14px; font-weight: 600; color: var(--muted); }
+  .limit-row .name-line { display: flex; gap: 8px; margin-bottom: 8px; }
+  .limit-row .name-line input { font-weight: 700; }
+  .limit-row .del { min-width: 64px; min-height: 56px; border-radius: 12px; border: 2px solid var(--bad); color: var(--bad); background: #fff; font: inherit; font-weight: 700; }
+  .note { color: var(--muted); font-size: 15px; margin: 0 0 14px; }
+
+  @media (min-width: 560px) {
+    .row2.wide { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="top">
+    <h1>Fugtlog · Fjordtørreriet</h1>
+    <div class="clock" id="clock"></div>
+  </div>
+  <div class="counter" id="counter" role="status" aria-live="polite">
+    <div class="num" id="devCount">0</div>
+    <div class="lbl" id="devLabel">afvigelser i dag</div>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button role="tab" aria-selected="true" data-tab="maal">Ny måling</button>
+  <button role="tab" aria-selected="false" data-tab="log">Log</button>
+  <button role="tab" aria-selected="false" data-tab="graenser">Grænser</button>
+</nav>
+
+<main>
+  <!-- NY MÅLING -->
+  <section id="tab-maal">
+    <form class="card" id="form" novalidate autocomplete="off">
+      <h2>Ny måling</h2>
+
+      <div class="field">
+        <label>Planlager</label>
+        <div class="chips" id="plChips"></div>
+      </div>
+
+      <div class="field">
+        <label>Vare</label>
+        <div class="chips" id="vareChips"></div>
+      </div>
+
+      <div class="row2">
+        <div class="field">
+          <label for="vand">Vandindhold <span class="hint">%</span></label>
+          <input id="vand" inputmode="decimal" placeholder="fx 14,8">
+        </div>
+        <div class="field">
+          <label for="temp">Lagtemp. <span class="hint">°C</span></label>
+          <input id="temp" inputmode="decimal" placeholder="fx 18">
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="init">Initialer</label>
+        <input id="init" maxlength="5" autocapitalize="characters" placeholder="fx ARN" style="text-transform:uppercase">
+      </div>
+
+      <div class="status" id="status">Vælg planlager og vare, og indtast målingen.</div>
+
+      <div class="corrective" id="corrBox" hidden>
+        <label for="corr">Korrigerende handling <span class="hint">skal udfyldes</span></label>
+        <textarea id="corr" placeholder="Hvad gør du nu? Fx vender laget, starter blæser, flytter partiet, kontaktede formand."></textarea>
+      </div>
+
+      <button class="btn" id="saveBtn" type="submit" disabled>Gem måling</button>
+    </form>
+  </section>
+
+  <!-- LOG -->
+  <section id="tab-log" hidden>
+    <div class="card">
+      <h2>Eksport</h2>
+      <p class="note">Hent alle målinger som CSV. Filen åbner direkte i dansk Excel med komma som decimaltegn.</p>
+      <button class="btn" id="exportBtn" type="button">Eksportér til Excel (CSV)</button>
+    </div>
+    <div class="card">
+      <h2 id="logTitle">Målinger</h2>
+      <div id="logList"></div>
+    </div>
+  </section>
+
+  <!-- GRÆNSER -->
+  <section id="tab-graenser" hidden>
+    <div class="card">
+      <h2>Grænseværdier</h2>
+      <p class="note">Lad et felt stå tomt, hvis der ikke er en grænse. Ændringer gælder for nye målinger. Gamle målinger beholder de grænser, de blev målt mod.</p>
+      <div id="limitList"></div>
+      <button class="btn secondary" id="addVare" type="button">+ Tilføj vare</button>
+      <button class="btn" id="saveLimits" type="button">Gem grænser</button>
+    </div>
+
+    <div class="card">
+      <h2>Planlagre</h2>
+      <p class="note">Skriv planlagrene adskilt af komma.</p>
+      <div class="field">
+        <input id="plInput" style="font-size:20px">
+      </div>
+      <button class="btn" id="savePl" type="button">Gem planlagre</button>
+    </div>
+
+    <div class="card">
+      <h2>Nulstil</h2>
+      <button class="btn secondary" id="resetLimits" type="button">Gendan standardgrænser</button>
+      <button class="btn danger" id="wipe" type="button">Slet alle målinger</button>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast" role="alert"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ---------- Opsætning ---------- */
+  var KEY_DATA = 'fjordtorreriet.fugtlog.maalinger.v1';
+  var KEY_LIMITS = 'fjordtorreriet.fugtlog.graenser.v1';
+  var KEY_PL = 'fjordtorreriet.fugtlog.planlagre.v1';
+  var KEY_LAST = 'fjordtorreriet.fugtlog.sidste.v1';
+
+  var DEFAULT_LIMITS = [
+    { vare: 'Korn',         vandMin: null, vandMax: 15.5, tempMax: 25 },
+    { vare: 'Tang',         vandMin: null, vandMax: 16.5, tempMax: 25 },
+    { vare: 'Krydderurter', vandMin: 10.0, vandMax: 12.5, tempMax: null }
+  ];
+  var DEFAULT_PL = ['PL1', 'PL2', 'PL3', 'PL4', 'PL5', 'PL6'];
+
+  /* ---------- Lager ---------- */
+  function load(key, fallback) {
+    try {
+      var raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch (e) { return fallback; }
+  }
+  function store(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); return true; }
+    catch (e) { toast('Kunne ikke gemme. Tjek at browseren tillader lokal lagring.'); return false; }
+  }
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
+
+  var state = {
+    data: load(KEY_DATA, []),
+    limits: load(KEY_LIMITS, clone(DEFAULT_LIMITS)),
+    pl: load(KEY_PL, DEFAULT_PL.slice()),
+    pickPl: null,
+    pickVare: null
+  };
+
+  /* ---------- Tal og datoer ---------- */
+  function parseNum(s) {
+    if (s === null || s === undefined) return null;
+    s = String(s).trim().replace(/\s/g, '').replace(',', '.');
+    if (s === '') return null;
+    if (!/^-?\d+(\.\d+)?$/.test(s)) return NaN;
+    return parseFloat(s);
+  }
+  function fmt(n, d) {
+    if (n === null || n === undefined || n === '') return '';
+    return Number(n).toLocaleString('da-DK', { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function dayKey(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function dateDa(d) { return pad(d.getDate()) + '-' + pad(d.getMonth() + 1) + '-' + d.getFullYear(); }
+  function timeDa(d) { return pad(d.getHours()) + '.' + pad(d.getMinutes()); }
+
+  /* ---------- Kontrol mod grænser ---------- */
+  function findLimit(vare) {
+    for (var i = 0; i < state.limits.length; i++) if (state.limits[i].vare === vare) return state.limits[i];
+    return null;
+  }
+  // Returnerer en liste af afvigelser (tom liste = inden for grænserne)
+  function check(lim, vand, temp) {
+    var out = [];
+    if (!lim) return out;
+    if (vand !== null && !isNaN(vand)) {
+      if (lim.vandMax !== null && vand > lim.vandMax) out.push({ felt: 'vand', tekst: 'Vandindhold ' + fmt(vand, 1) + ' % er over grænsen på ' + fmt(lim.vandMax, 1) + ' %' });
+      if (lim.vandMin !== null && vand < lim.vandMin) out.push({ felt: 'vand', tekst: 'Vandindhold ' + fmt(vand, 1) + ' % er under grænsen på ' + fmt(lim.vandMin, 1) + ' %' });
+    }
+    if (temp !== null && !isNaN(temp)) {
+      if (lim.tempMax !== null && temp > lim.tempMax) out.push({ felt: 'temp', tekst: 'Lagtemperatur ' + fmt(temp, 1) + ' °C er over grænsen på ' + fmt(lim.tempMax, 1) + ' °C' });
+    }
+    return out;
+  }
+  function limitText(lim) {
+    if (!lim) return '';
+    var parts = [];
+    if (lim.vandMin !== null && lim.vandMax !== null) parts.push('vand ' + fmt(lim.vandMin, 1) + ' til ' + fmt(lim.vandMax, 1) + ' %');
+    else if (lim.vandMax !== null) parts.push('vand højst ' + fmt(lim.vandMax, 1) + ' %');
+    else if (lim.vandMin !== null) parts.push('vand mindst ' + fmt(lim.vandMin, 1) + ' %');
+    if (lim.tempMax !== null) parts.push('temp. højst ' + fmt(lim.tempMax, 1) + ' °C');
+    return parts.length ? 'Grænse for ' + lim.vare.toLowerCase() + ' er ' + parts.join(' og ') + '.' : 'Ingen grænser sat for ' + lim.vare.toLowerCase() + '.';
+  }
+
+  /* ---------- DOM ---------- */
+  var $ = function (id) { return document.getElementById(id); };
+  var el = {
+    clock: $('clock'), counter: $('counter'), devCount: $('devCount'), devLabel: $('devLabel'),
+    form: $('form'), plChips: $('plChips'), vareChips: $('vareChips'),
+    vand: $('vand'), temp: $('temp'), init: $('init'),
+    status: $('status'), corrBox: $('corrBox'), corr: $('corr'), saveBtn: $('saveBtn'),
+    logList: $('logList'), logTitle: $('logTitle'), exportBtn: $('exportBtn'),
+    limitList: $('limitList'), addVare: $('addVare'), saveLimits: $('saveLimits'),
+    plInput: $('plInput'), savePl: $('savePl'), resetLimits: $('resetLimits'), wipe: $('wipe'),
+    toast: $('toast')
+  };
+  function esc(s) {
+    return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  var toastTimer;
+  function toast(msg) {
+    el.toast.textContent = msg;
+    el.toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.toast.classList.remove('show'); }, 3200);
+  }
+
+  /* ---------- Ur og tæller ---------- */
+  function tick() {
+    var d = new Date();
+    el.clock.textContent = dateDa(d) + ' kl. ' + timeDa(d);
+  }
+  function renderCounter() {
+    var today = dayKey(new Date());
+    var n = state.data.filter(function (m) { return m.afvigelse && dayKey(new Date(m.tid)) === today; }).length;
+    el.devCount.textContent = n;
+    el.devLabel.textContent = n === 1 ? 'afvigelse i dag' : 'afvigelser i dag';
+    el.counter.classList.toggle('has-dev', n > 0);
+  }
+
+  /* ---------- Formular ---------- */
+  function chip(container, items, current, onPick) {
+    container.innerHTML = '';
+    items.forEach(function (name) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = name;
+      b.setAttribute('aria-pressed', name === current ? 'true' : 'false');
+      b.addEventListener('click', function () { onPick(name); });
+      container.appendChild(b);
+    });
+  }
+  function renderChips() {
+    if (state.pl.indexOf(state.pickPl) === -1) state.pickPl = null;
+    if (!findLimit(state.pickVare)) state.pickVare = null;
+    chip(el.plChips, state.pl, state.pickPl, function (n) { state.pickPl = n; renderChips(); evaluate(); });
+    chip(el.vareChips, state.limits.map(function (l) { return l.vare; }), state.pickVare, function (n) { state.pickVare = n; renderChips(); evaluate(); });
+  }
+
+  function evaluate() {
+    var vand = parseNum(el.vand.value);
+    var temp = parseNum(el.temp.value);
+    var init = el.init.value.trim();
+    var lim = findLimit(state.pickVare);
+    var devs = check(lim, vand, temp);
+
+    var badVand = devs.some(function (d) { return d.felt === 'vand'; });
+    var badTemp = devs.some(function (d) { return d.felt === 'temp'; });
+    el.vand.classList.toggle('is-bad', badVand || (vand !== null && isNaN(vand)));
+    el.temp.classList.toggle('is-bad', badTemp || (temp !== null && isNaN(temp)));
+
+    var missing = [];
+    if (!state.pickPl) missing.push('planlager');
+    if (!state.pickVare) missing.push('vare');
+    if (vand === null) missing.push('vandindhold');
+    if (temp === null) missing.push('lagtemperatur');
+    if (!init) missing.push('initialer');
+
+    var invalid = (vand !== null && isNaN(vand)) || (temp !== null && isNaN(temp));
+    var needsCorr = devs.length > 0;
+    el.corrBox.hidden = !needsCorr;
+    var corrOk = !needsCorr || el.corr.value.trim().length >= 3;
+
+    el.status.className = 'status';
+    if (invalid) {
+      el.status.classList.add('bad');
+      el.status.textContent = 'Skriv kun tal, fx 14,8.';
+    } else if (needsCorr) {
+      el.status.classList.add('bad');
+      el.status.innerHTML = 'AFVIGELSE<ul>' + devs.map(function (d) { return '<li>' + esc(d.tekst) + '</li>'; }).join('') + '</ul>';
+    } else if (lim && (vand !== null || temp !== null)) {
+      if (!missing.length) el.status.classList.add('ok');
+      el.status.textContent = (missing.length ? '' : 'Inden for grænserne. ') + limitText(lim);
+    } else {
+      el.status.textContent = lim ? limitText(lim) : 'Vælg planlager og vare, og indtast målingen.';
+    }
+
+    var ready = missing.length === 0 && !invalid && corrOk;
+    el.saveBtn.disabled = !ready;
+    if (needsCorr && !corrOk) el.saveBtn.textContent = 'Udfyld korrigerende handling';
+    else if (missing.length && !invalid) el.saveBtn.textContent = 'Mangler ' + missing.join(', ');
+    else el.saveBtn.textContent = needsCorr ? 'Gem afvigelse' : 'Gem måling';
+
+    return { ready: ready, vand: vand, temp: temp, init: init, lim: lim, devs: devs };
+  }
+
+  function save(e) {
+    if (e) e.preventDefault();
+    var r = evaluate();
+    if (!r.ready) return;
+    var now = new Date();
+    var rec = {
+      id: now.getTime() + '-' + Math.random().toString(36).slice(2, 7),
+      tid: now.toISOString(),
+      planlager: state.pickPl,
+      vare: state.pickVare,
+      vand: r.vand,
+      temp: r.temp,
+      initialer: r.init.toUpperCase(),
+      graense: clone(r.lim),
+      afvigelse: r.devs.length > 0,
+      afvigelser: r.devs.map(function (d) { return d.tekst; }),
+      handling: r.devs.length ? el.corr.value.trim() : ''
+    };
+    state.data.push(rec);
+    if (!store(KEY_DATA, state.data)) { state.data.pop(); return; }
+    store(KEY_LAST, { init: rec.initialer });
+
+    el.vand.value = '';
+    el.temp.value = '';
+    el.corr.value = '';
+    evaluate();
+    renderCounter();
+    renderLog();
+    toast(rec.afvigelse ? 'Afvigelse gemt i ' + rec.planlager + ' med korrigerende handling.' : 'Måling gemt for ' + rec.vare.toLowerCase() + ' i ' + rec.planlager + '.');
+    el.vand.focus();
+  }
+
+  /* ---------- Log ---------- */
+  function renderLog() {
+    var list = state.data.slice().sort(function (a, b) { return a.tid < b.tid ? 1 : -1; });
+    el.logTitle.textContent = 'Målinger (' + list.length + ')';
+    if (!list.length) { el.logList.innerHTML = '<p class="empty">Ingen målinger endnu.</p>'; return; }
+    el.logList.innerHTML = list.slice(0, 200).map(function (m) {
+      var d = new Date(m.tid);
+      var devVand = m.afvigelser.some(function (t) { return t.indexOf('Vandindhold') === 0; });
+      var devTemp = m.afvigelser.some(function (t) { return t.indexOf('Lagtemperatur') === 0; });
+      return '<div class="log-item' + (m.afvigelse ? ' dev' : '') + '">' +
+        '<div class="log-head"><span>' + esc(m.planlager) + ' · ' + esc(m.vare) + '</span><span>' + esc(m.initialer) + '</span></div>' +
+        '<div class="log-meta">' + dateDa(d) + ' kl. ' + timeDa(d) + '</div>' +
+        '<div class="log-vals"><span class="' + (devVand ? 'bad' : '') + '">' + fmt(m.vand, 1) + ' %</span> · <span class="' + (devTemp ? 'bad' : '') + '">' + fmt(m.temp, 1) + ' °C</span></div>' +
+        (m.afvigelse ? '<div class="log-action"><b>Afvigelse.</b> ' + esc(m.afvigelser.join('. ')) + '<br><b>Handling.</b> ' + esc(m.handling) + '</div>' : '') +
+        '</div>';
+    }).join('') + (list.length > 200 ? '<p class="empty">Viser de seneste 200. Eksportér for at se alle.</p>' : '');
+  }
+
+  /* ---------- CSV-eksport ---------- */
+  function csvCell(v) {
+    var s = v === null || v === undefined ? '' : String(v);
+    return /[;"\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  function buildCsv(data) {
+    var head = ['Dato', 'Tid', 'Planlager', 'Vare', 'Vandindhold (%)', 'Lagtemperatur (°C)', 'Initialer',
+      'Grænse vand min (%)', 'Grænse vand maks (%)', 'Grænse temp maks (°C)', 'Status', 'Afvigelse', 'Korrigerende handling'];
+    var rows = data.slice().sort(function (a, b) { return a.tid < b.tid ? -1 : 1; }).map(function (m) {
+      var d = new Date(m.tid), g = m.graense || {};
+      return [dateDa(d), timeDa(d), m.planlager, m.vare, fmt(m.vand, 1), fmt(m.temp, 1), m.initialer,
+        g.vandMin === null ? '' : fmt(g.vandMin, 1), g.vandMax === null ? '' : fmt(g.vandMax, 1), g.tempMax === null ? '' : fmt(g.tempMax, 1),
+        m.afvigelse ? 'AFVIGELSE' : 'OK', m.afvigelser.join('. '), m.handling].map(csvCell).join(';');
+    });
+    // BOM + semikolon får dansk Excel til at åbne filen korrekt med æøå og decimal-komma
+    return '﻿' + head.map(csvCell).join(';') + '\r\n' + rows.join('\r\n') + '\r\n';
+  }
+  function exportCsv() {
+    if (!state.data.length) { toast('Der er ingen målinger at eksportere endnu.'); return; }
+    var blob = new Blob([buildCsv(state.data)], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'fugtlog-fjordtorreriet-' + dayKey(new Date()) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    toast(state.data.length + ' målinger eksporteret.');
+  }
+
+  /* ---------- Grænser ---------- */
+  function numVal(v) { return v === null || v === undefined ? '' : fmt(v, 1); }
+  function renderLimits() {
+    el.limitList.innerHTML = state.limits.map(function (l, i) {
+      return '<div class="limit-row" data-i="' + i + '">' +
+        '<div class="name-line"><input data-k="vare" value="' + esc(l.vare) + '" aria-label="Varenavn"><button type="button" class="del" data-del="' + i + '" aria-label="Slet ' + esc(l.vare) + '">Slet</button></div>' +
+        '<div class="row3">' +
+        '<div><label>Vand min %</label><input data-k="vandMin" inputmode="decimal" value="' + numVal(l.vandMin) + '"></div>' +
+        '<div><label>Vand maks %</label><input data-k="vandMax" inputmode="decimal" value="' + numVal(l.vandMax) + '"></div>' +
+        '<div><label>Temp maks °C</label><input data-k="tempMax" inputmode="decimal" value="' + numVal(l.tempMax) + '"></div>' +
+        '</div></div>';
+    }).join('');
+  }
+  function readLimits() {
+    var rows = el.limitList.querySelectorAll('.limit-row');
+    var out = [], seen = {};
+    for (var i = 0; i < rows.length; i++) {
+      var get = function (k) { return rows[i].querySelector('[data-k="' + k + '"]').value; };
+      var vare = get('vare').trim();
+      if (!vare) continue;
+      if (seen[vare.toLowerCase()]) throw new Error('Varen ' + vare + ' står der to gange.');
+      seen[vare.toLowerCase()] = true;
+      var l = { vare: vare, vandMin: parseNum(get('vandMin')), vandMax: parseNum(get('vandMax')), tempMax: parseNum(get('tempMax')) };
+      ['vandMin', 'vandMax', 'tempMax'].forEach(function (k) { if (l[k] !== null && isNaN(l[k])) throw new Error('Tjek tallene for ' + vare + '.'); });
+      if (l.vandMin !== null && l.vandMax !== null && l.vandMin > l.vandMax) throw new Error('For ' + vare + ' er min større end maks.');
+      out.push(l);
+    }
+    if (!out.length) throw new Error('Der skal være mindst én vare.');
+    return out;
+  }
+  el.limitList.addEventListener('click', function (e) {
+    var i = e.target.getAttribute('data-del');
+    if (i === null) return;
+    var row = el.limitList.querySelector('[data-i="' + i + '"]');
+    if (row && confirm('Slet varen fra listen? Gamle målinger bevares.')) row.remove();
+  });
+  el.addVare.addEventListener('click', function () {
+    var div = document.createElement('div');
+    div.innerHTML = '<div class="limit-row" data-i="ny' + Date.now() + '"><div class="name-line"><input data-k="vare" placeholder="Ny vare" aria-label="Varenavn"></div>' +
+      '<div class="row3"><div><label>Vand min %</label><input data-k="vandMin" inputmode="decimal"></div>' +
+      '<div><label>Vand maks %</label><input data-k="vandMax" inputmode="decimal"></div>' +
+      '<div><label>Temp maks °C</label><input data-k="tempMax" inputmode="decimal"></div></div></div>';
+    el.limitList.appendChild(div.firstChild);
+    el.limitList.lastChild.querySelector('input').focus();
+  });
+  el.saveLimits.addEventListener('click', function () {
+    try {
+      state.limits = readLimits();
+      store(KEY_LIMITS, state.limits);
+      renderLimits(); renderChips(); evaluate();
+      toast('Grænser gemt.');
+    } catch (err) { toast(err.message); }
+  });
+  el.resetLimits.addEventListener('click', function () {
+    if (!confirm('Gendan standardgrænserne? Dine egne ændringer i grænserne forsvinder.')) return;
+    state.limits = clone(DEFAULT_LIMITS);
+    store(KEY_LIMITS, state.limits);
+    renderLimits(); renderChips(); evaluate();
+    toast('Standardgrænser gendannet.');
+  });
+  el.savePl.addEventListener('click', function () {
+    var list = el.plInput.value.split(',').map(function (s) { return s.trim().toUpperCase(); }).filter(Boolean);
+    list = list.filter(function (s, i) { return list.indexOf(s) === i; });
+    if (!list.length) { toast('Skriv mindst ét planlager.'); return; }
+    state.pl = list;
+    store(KEY_PL, state.pl);
+    renderChips(); evaluate();
+    toast('Planlagre gemt.');
+  });
+  el.wipe.addEventListener('click', function () {
+    if (!state.data.length) { toast('Der er ingen målinger.'); return; }
+    if (!confirm('Slet alle ' + state.data.length + ' målinger? Eksportér først, hvis de skal gemmes.')) return;
+    if (!confirm('Er du helt sikker? Det kan ikke fortrydes.')) return;
+    state.data = [];
+    store(KEY_DATA, state.data);
+    renderCounter(); renderLog();
+    toast('Alle målinger er slettet.');
+  });
+
+  /* ---------- Faner ---------- */
+  var tabs = document.querySelectorAll('nav.tabs button');
+  Array.prototype.forEach.call(tabs, function (b) {
+    b.addEventListener('click', function () {
+      Array.prototype.forEach.call(tabs, function (x) {
+        var on = x === b;
+        x.setAttribute('aria-selected', on ? 'true' : 'false');
+        $('tab-' + x.getAttribute('data-tab')).hidden = !on;
+      });
+      if (b.getAttribute('data-tab') === 'graenser') { renderLimits(); el.plInput.value = state.pl.join(', '); }
+      if (b.getAttribute('data-tab') === 'log') renderLog();
+      window.scrollTo(0, 0);
+    });
+  });
+
+  /* ---------- Start ---------- */
+  ['input', 'change'].forEach(function (ev) {
+    el.vand.addEventListener(ev, evaluate);
+    el.temp.addEventListener(ev, evaluate);
+    el.init.addEventListener(ev, evaluate);
+    el.corr.addEventListener(ev, evaluate);
+  });
+  el.form.addEventListener('submit', save);
+  el.exportBtn.addEventListener('click', exportCsv);
+
+  var last = load(KEY_LAST, null);
+  if (last && last.init) el.init.value = last.init;
+
+  tick(); setInterval(tick, 15000);
+  setInterval(renderCounter, 60000);
+  renderChips(); renderCounter(); renderLog(); evaluate();
+
+  // Til automatiske tests
+  window.__fugtlog = { check: check, parseNum: parseNum, buildCsv: buildCsv, state: state };
+})();
+</script>
+</body>
+</html>
