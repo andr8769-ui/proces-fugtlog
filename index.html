@@ -210,8 +210,9 @@
   <section id="tab-log" hidden>
     <div class="card">
       <h2>Eksport</h2>
-      <p class="note">Hent alle målinger som CSV. Filen åbner direkte i dansk Excel med komma som decimaltegn.</p>
-      <button class="btn" id="exportBtn" type="button">Eksportér til Excel (CSV)</button>
+      <p class="note">Hent alle målinger som Excel-fil. Afvigelser står med rødt, og tal og datoer er rigtige tal, så du kan sortere og regne på dem.</p>
+      <button class="btn" id="exportBtn" type="button">Eksportér til Excel</button>
+      <button class="btn secondary" id="exportCsvBtn" type="button">Hent som CSV</button>
     </div>
     <div class="card">
       <h2 id="logTitle">Målinger</h2>
@@ -503,16 +504,133 @@
     // BOM + semikolon får dansk Excel til at åbne filen korrekt med æøå og decimal-komma
     return '﻿' + head.map(csvCell).join(';') + '\r\n' + rows.join('\r\n') + '\r\n';
   }
-  function exportCsv() {
-    if (!state.data.length) { toast('Der er ingen målinger at eksportere endnu.'); return; }
-    var blob = new Blob([buildCsv(state.data)], { type: 'text/csv;charset=utf-8' });
+  function download(blob, name) {
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'fugtlog-fjordtorreriet-' + dayKey(new Date()) + '.csv';
+    a.download = name;
     document.body.appendChild(a);
     a.click();
     setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
-    toast(state.data.length + ' målinger eksporteret.');
+  }
+  function exportCsv() {
+    if (!state.data.length) { toast('Der er ingen målinger at eksportere endnu.'); return; }
+    download(new Blob([buildCsv(state.data)], { type: 'text/csv;charset=utf-8' }), 'fugtlog-fjordtorreriet-' + dayKey(new Date()) + '.csv');
+    toast(state.data.length + ' målinger hentet som CSV.');
+  }
+
+  /* ---------- Excel-eksport (.xlsx bygget uden biblioteker) ---------- */
+  var CRC_TABLE = (function () {
+    var t = [], c, n, k;
+    for (n = 0; n < 256; n++) { c = n; for (k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+    return t;
+  })();
+  function crc32(bytes) {
+    var c = 0xFFFFFFFF;
+    for (var i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+  // Minimal zip uden komprimering (metode "stored"), hvilket xlsx tillader
+  function zip(files) {
+    var enc = new TextEncoder(), parts = [], central = [], offset = 0;
+    function u16(v) { return [v & 255, (v >>> 8) & 255]; }
+    function u32(v) { return [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255]; }
+    files.forEach(function (f) {
+      var name = enc.encode(f.name), data = enc.encode(f.data), crc = crc32(data);
+      var common = [].concat(u16(20), u16(0x0800), u16(0), u16(0), u16(0x21), u32(crc), u32(data.length), u32(data.length), u16(name.length), u16(0));
+      var local = new Uint8Array([].concat(u32(0x04034b50), common));
+      parts.push(local, name, data);
+      central.push(new Uint8Array([].concat(u32(0x02014b50), u16(20), common, u16(0), u16(0), u16(0), u32(0), u32(offset))), name);
+      offset += local.length + name.length + data.length;
+    });
+    var cdSize = central.reduce(function (s, p) { return s + p.length; }, 0);
+    var end = new Uint8Array([].concat(u32(0x06054b50), u16(0), u16(0), u16(files.length), u16(files.length), u32(cdSize), u32(offset), u16(0)));
+    return new Blob(parts.concat(central, [end]), { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  }
+  function xml(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function colName(i) { var s = ''; i++; while (i > 0) { var m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; }
+  // Excel-serietal ud fra lokal dato og tid
+  function excelSerial(d) { return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds()) / 86400000 + 25569; }
+
+  function buildXlsx(data) {
+    var head = ['Dato', 'Tid', 'Planlager', 'Vare', 'Vandindhold (%)', 'Lagtemperatur (°C)', 'Initialer',
+      'Grænse vand min (%)', 'Grænse vand maks (%)', 'Grænse temp maks (°C)', 'Status', 'Afvigelse', 'Korrigerende handling'];
+    var widths = [12, 8, 11, 14, 16, 18, 10, 19, 20, 21, 12, 48, 48];
+    // Stilnumre i styles.xml. Afvigelsesrækker lægger 5 til og bliver røde
+    var S = { head: 1, date: 2, time: 3, num: 4, text: 5 }, RED = 5;
+    function cell(ref, v, kind, style) {
+      if (v === null || v === undefined || v === '') return '<c r="' + ref + '" s="' + style + '"/>';
+      if (kind === 'n') return '<c r="' + ref + '" s="' + style + '"><v>' + v + '</v></c>';
+      return '<c r="' + ref + '" s="' + style + '" t="inlineStr"><is><t xml:space="preserve">' + xml(v) + '</t></is></c>';
+    }
+    var rows = ['<row r="1">' + head.map(function (h, i) { return cell(colName(i) + '1', h, 's', S.head); }).join('') + '</row>'];
+    var sorted = data.slice().sort(function (a, b) { return a.tid < b.tid ? -1 : 1; });
+    sorted.forEach(function (m, idx) {
+      var r = idx + 2, d = new Date(m.tid), g = m.graense || {}, add = m.afvigelse ? RED : 0;
+      var serial = excelSerial(d), day = Math.floor(serial);
+      var vals = [
+        [day, 'n', S.date], [serial - day, 'n', S.time], [m.planlager, 's', S.text], [m.vare, 's', S.text],
+        [m.vand, 'n', S.num], [m.temp, 'n', S.num], [m.initialer, 's', S.text],
+        [g.vandMin, 'n', S.num], [g.vandMax, 'n', S.num], [g.tempMax, 'n', S.num],
+        [m.afvigelse ? 'AFVIGELSE' : 'OK', 's', S.text], [m.afvigelser.join('. '), 's', S.text], [m.handling, 's', S.text]
+      ];
+      rows.push('<row r="' + r + '">' + vals.map(function (v, i) { return cell(colName(i) + r, v[0], v[1], v[2] + add); }).join('') + '</row>');
+    });
+    var lastRef = colName(head.length - 1) + (sorted.length + 1);
+
+    var sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>' +
+      '<cols>' + widths.map(function (w, i) { return '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w + '" customWidth="1"/>'; }).join('') + '</cols>' +
+      '<sheetData>' + rows.join('') + '</sheetData>' +
+      '<autoFilter ref="A1:' + lastRef + '"/>' +
+      '</worksheet>';
+
+    var styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      '<numFmts count="3"><numFmt numFmtId="164" formatCode="dd-mm-yyyy"/><numFmt numFmtId="165" formatCode="hh:mm"/><numFmt numFmtId="166" formatCode="0.0"/></numFmts>' +
+      '<fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font>' +
+      '<font><b/><sz val="11"/><color rgb="FFC62828"/><name val="Calibri"/></font></fonts>' +
+      '<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>' +
+      '<fill><patternFill patternType="solid"><fgColor rgb="FFDDE5E4"/><bgColor indexed="64"/></patternFill></fill>' +
+      '<fill><patternFill patternType="solid"><fgColor rgb="FFFDE2E2"/><bgColor indexed="64"/></patternFill></fill></fills>' +
+      '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
+      '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+      // 0 standard, 1 overskrift, 2 dato, 3 tid, 4 tal, 5 tekst, 6 (ubrugt), 7 til 10 er røde udgaver af 2 til 5
+      '<cellXfs count="11">' +
+      '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+      '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>' +
+      '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+      '<xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+      '<xf numFmtId="166" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+      '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+      '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+      '<xf numFmtId="164" fontId="2" fillId="3" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1"/>' +
+      '<xf numFmtId="165" fontId="2" fillId="3" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1"/>' +
+      '<xf numFmtId="166" fontId="2" fillId="3" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1"/>' +
+      '<xf numFmtId="0" fontId="2" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1"/>' +
+      '</cellXfs>' +
+      '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
+      '</styleSheet>';
+
+    var workbook = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+      '<sheets><sheet name="Målinger" sheetId="1" r:id="rId1"/></sheets>' +
+      '<definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">\'Målinger\'!$A$1:$' + lastRef.replace(/(\d+)$/, '\$$1') + '</definedName></definedNames>' +
+      '</workbook>';
+
+    return zip([
+      { name: '[Content_Types].xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>' },
+      { name: '_rels/.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>' },
+      { name: 'xl/workbook.xml', data: workbook },
+      { name: 'xl/_rels/workbook.xml.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>' },
+      { name: 'xl/worksheets/sheet1.xml', data: sheet },
+      { name: 'xl/styles.xml', data: styles }
+    ]);
+  }
+  function exportXlsx() {
+    if (!state.data.length) { toast('Der er ingen målinger at eksportere endnu.'); return; }
+    download(buildXlsx(state.data), 'fugtlog-fjordtorreriet-' + dayKey(new Date()) + '.xlsx');
+    toast(state.data.length + ' målinger eksporteret til Excel.');
   }
 
   /* ---------- Grænser ---------- */
@@ -617,7 +735,8 @@
     el.corr.addEventListener(ev, evaluate);
   });
   el.form.addEventListener('submit', save);
-  el.exportBtn.addEventListener('click', exportCsv);
+  el.exportBtn.addEventListener('click', exportXlsx);
+  $('exportCsvBtn').addEventListener('click', exportCsv);
 
   var last = load(KEY_LAST, null);
   if (last && last.init) el.init.value = last.init;
